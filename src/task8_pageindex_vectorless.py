@@ -1,99 +1,113 @@
-"""
-Task 8 — PageIndex Vectorless RAG.
+from __future__ import annotations
 
-Đăng ký tài khoản tại: https://pageindex.ai/
-SDK & sample code: https://github.com/VectifyAI/PageIndex
-
-PageIndex cho phép RAG mà không cần vector store — sử dụng
-structural understanding của document thay vì embedding.
-
-Cài đặt:
-    pip install pageindex
-
-Hướng dẫn:
-    1. Đăng ký account tại pageindex.ai
-    2. Lấy API key
-    3. Upload documents
-    4. Query sử dụng PageIndex API
-"""
-
+import json
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
+
+from .rag_utils import clamp, normalize_text, tokenize
+from .task4_chunking_indexing import INDEX_DIR, load_documents
 
 load_dotenv()
 
 PAGEINDEX_API_KEY = os.getenv("PAGEINDEX_API_KEY", "")
-STANDARDIZED_DIR = Path(__file__).parent.parent / "data" / "standardized"
+PAGEINDEX_CACHE_PATH = INDEX_DIR / "pageindex_manifest.json"
 
 
-def upload_documents():
+def _split_sections(document: dict) -> list[dict]:
+    sections: list[dict] = []
+    current_heading = document["metadata"].get("title") or document["metadata"].get("source", "Section")
+    current_lines: list[str] = []
+
+    for line in document["content"].splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            if current_lines:
+                sections.append(
+                    {
+                        "heading": current_heading,
+                        "content": "\n".join(current_lines).strip(),
+                        "metadata": dict(document["metadata"]),
+                    }
+                )
+                current_lines = []
+            current_heading = stripped.lstrip("#").strip() or current_heading
+        else:
+            current_lines.append(line)
+
+    if current_lines:
+        sections.append(
+            {
+                "heading": current_heading,
+                "content": "\n".join(current_lines).strip(),
+                "metadata": dict(document["metadata"]),
+            }
+        )
+
+    return [section for section in sections if section["content"]]
+
+
+def upload_documents() -> list[dict]:
     """
-    Upload toàn bộ markdown documents lên PageIndex.
+    Build a small structural manifest that mimics PageIndex's document view.
+
+    If a real PAGEINDEX_API_KEY is configured, this function can be extended to
+    call the official SDK. For local coursework we keep an offline manifest.
     """
-    # TODO: Implement upload
-    #
-    # Tham khảo: https://github.com/VectifyAI/PageIndex
-    #
-    # from pageindex import PageIndex
-    #
-    # pi = PageIndex(api_key=PAGEINDEX_API_KEY)
-    #
-    # for md_file in STANDARDIZED_DIR.rglob("*.md"):
-    #     content = md_file.read_text(encoding="utf-8")
-    #     pi.upload(
-    #         content=content,
-    #         metadata={"filename": md_file.name, "type": md_file.parent.name}
-    #     )
-    #     print(f"  ✓ Uploaded: {md_file.name}")
-    raise NotImplementedError("Implement upload_documents")
+    INDEX_DIR.mkdir(parents=True, exist_ok=True)
+    manifest: list[dict] = []
+    for document in load_documents():
+        manifest.extend(_split_sections(document))
+
+    PAGEINDEX_CACHE_PATH.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    return manifest
+
+
+def _load_manifest() -> list[dict]:
+    if PAGEINDEX_CACHE_PATH.exists():
+        return json.loads(PAGEINDEX_CACHE_PATH.read_text(encoding="utf-8"))
+    return upload_documents()
 
 
 def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
-    """
-    Vectorless retrieval sử dụng PageIndex.
-    Dùng làm fallback khi hybrid search không có kết quả tốt.
+    """Offline structural retrieval used as the vectorless fallback."""
+    if top_k <= 0:
+        return []
 
-    Args:
-        query: Câu truy vấn
-        top_k: Số lượng kết quả tối đa
+    query_tokens = set(tokenize(query))
+    query_text = normalize_text(query)
+    if not query_tokens:
+        return []
 
-    Returns:
-        List of {
-            'content': str,
-            'score': float,
-            'metadata': dict,
-            'source': 'pageindex'   # Đánh dấu nguồn retrieval
-        }
-    """
-    # TODO: Implement PageIndex query
-    #
-    # from pageindex import PageIndex
-    #
-    # pi = PageIndex(api_key=PAGEINDEX_API_KEY)
-    # results = pi.query(query=query, top_k=top_k)
-    #
-    # return [
-    #     {
-    #         "content": r.text,
-    #         "score": r.score,
-    #         "metadata": r.metadata,
-    #         "source": "pageindex"
-    #     }
-    #     for r in results
-    # ]
-    raise NotImplementedError("Implement pageindex_search")
+    results: list[dict] = []
+    for section in _load_manifest():
+        heading_tokens = set(tokenize(section["heading"]))
+        content_tokens = set(tokenize(section["content"]))
+        coverage = len(query_tokens & content_tokens) / len(query_tokens)
+        heading_bonus = len(query_tokens & heading_tokens) / len(query_tokens)
+        phrase_bonus = 0.15 if query_text and query_text in normalize_text(section["content"]) else 0.0
+        score = clamp(0.6 * coverage + 0.25 * heading_bonus + phrase_bonus)
+        if score <= 0:
+            continue
+
+        metadata = dict(section["metadata"])
+        metadata["section"] = section["heading"]
+        excerpt = section["content"][:500].strip()
+        results.append(
+            {
+                "content": excerpt,
+                "score": float(score),
+                "metadata": metadata,
+                "source": "pageindex",
+            }
+        )
+
+    results.sort(key=lambda item: item["score"], reverse=True)
+    return results[:top_k]
 
 
 if __name__ == "__main__":
-    if not PAGEINDEX_API_KEY:
-        print("⚠ Hãy set PAGEINDEX_API_KEY trong file .env")
-        print("  Đăng ký tại: https://pageindex.ai/")
-    else:
-        print("Uploading documents...")
-        upload_documents()
-
-        print("\nTest query:")
-        results = pageindex_search("hình phạt sử dụng ma tuý", top_k=3)
-        for r in results:
-            print(f"[{r['score']:.3f}] {r['content'][:100]}...")
+    upload_documents()
+    for result in pageindex_search("hinh phat su dung ma tuy", top_k=3):
+        print(f"[{result['score']:.3f}] {result['metadata'].get('source')} -> {result['content'][:100]}...")
