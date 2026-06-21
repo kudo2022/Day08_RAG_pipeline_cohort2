@@ -4,6 +4,7 @@ from .task5_semantic_search import semantic_search
 from .task6_lexical_search import lexical_search
 from .task7_reranking import rerank, rerank_rrf
 from .task8_pageindex_vectorless import pageindex_search
+from .task4_chunking_indexing import DEFAULT_DOMAIN
 
 SCORE_THRESHOLD = 0.3
 DEFAULT_TOP_K = 5
@@ -15,13 +16,25 @@ def retrieve(
     top_k: int = DEFAULT_TOP_K,
     score_threshold: float = SCORE_THRESHOLD,
     use_reranking: bool = True,
+    domain: str | None = DEFAULT_DOMAIN,
+    allowed_types: set[str] | None = None,
 ) -> list[dict]:
     """Run hybrid retrieval with PageIndex fallback."""
     if top_k <= 0:
         return []
 
-    dense_results = semantic_search(query, top_k=max(top_k * 2, 6))
-    sparse_results = lexical_search(query, top_k=max(top_k * 2, 6))
+    dense_results = semantic_search(
+        query,
+        top_k=max(top_k * 2, 6),
+        domain=domain,
+        allowed_types=allowed_types,
+    )
+    sparse_results = lexical_search(
+        query,
+        top_k=max(top_k * 2, 6),
+        domain=domain,
+        allowed_types=allowed_types,
+    )
     merged_results = rerank_rrf([dense_results, sparse_results], top_k=max(top_k * 2, 6))
 
     for item in merged_results:
@@ -37,7 +50,12 @@ def retrieve(
 
     best_score = final_results[0]["score"] if final_results else 0.0
     if not final_results or best_score < score_threshold:
-        fallback_results = pageindex_search(query, top_k=top_k)
+        fallback_results = pageindex_search(
+            query,
+            top_k=top_k,
+            domain=domain,
+            allowed_types=allowed_types,
+        )
         if fallback_results:
             return fallback_results[:top_k]
 

@@ -6,6 +6,7 @@ import re
 import unicodedata
 from collections import Counter
 from pathlib import Path
+from typing import Iterable
 
 TOKEN_PATTERN = re.compile(r"[a-z0-9_]+", re.IGNORECASE)
 YEAR_PATTERN = re.compile(r"\b(19|20)\d{2}\b")
@@ -97,6 +98,12 @@ def extract_year(*values: str) -> str:
     return ""
 
 
+def extract_markdown_field(text: str, field_name: str) -> str:
+    pattern = rf"^\*\*{re.escape(field_name)}:\*\*\s*(.+?)\s*$"
+    match = re.search(pattern, text or "", flags=re.MULTILINE)
+    return match.group(1).strip() if match else ""
+
+
 def pretty_name(value: str) -> str:
     stem = Path(value).stem if value else "source"
     return stem.replace("-", " ").replace("_", " ").strip().title()
@@ -110,8 +117,42 @@ def unique_item_key(item: dict) -> str:
     return f"{source}::{chunk_index}::{prefix}"
 
 
+def metadata_matches(
+    item_or_metadata: dict,
+    domain: str | None = None,
+    allowed_types: Iterable[str] | None = None,
+) -> bool:
+    metadata = item_or_metadata.get("metadata", item_or_metadata)
+    if allowed_types:
+        allowed = {value for value in allowed_types}
+        if metadata.get("type") not in allowed:
+            return False
+    if domain and metadata.get("domain") != domain:
+        return False
+    return True
+
+
+def searchable_text(item: dict) -> str:
+    metadata = item.get("metadata", {})
+    parts = [
+        metadata.get("official_id", ""),
+        metadata.get("title", ""),
+        metadata.get("section", ""),
+        item.get("content", ""),
+    ]
+    return "\n".join(part.strip() for part in parts if part and str(part).strip())
+
+
 def citation_label(item: dict) -> str:
     metadata = item.get("metadata", {})
+    official_id = metadata.get("official_id", "").strip()
     title = metadata.get("title") or pretty_name(metadata.get("source", "source"))
+    base = official_id or title
+    section = metadata.get("section", "").strip()
     year = metadata.get("year") or extract_year(metadata.get("source", ""), item.get("content", ""))
-    return f"{title}, {year}" if year else title
+
+    if section and normalize_text(section) != normalize_text(title):
+        return f"{base} - {section}"
+    if official_id:
+        return official_id
+    return f"{base}, {year}" if year else base

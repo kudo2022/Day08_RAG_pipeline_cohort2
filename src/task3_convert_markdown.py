@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import html
 import json
+import subprocess
 from io import BytesIO
 from pathlib import Path
 
@@ -39,6 +40,7 @@ def _discover_input_files(base_dir: Path) -> list[Path]:
         for path in base_dir.rglob("*")
         if path.is_file()
         and not path.name.startswith(".")
+        and not path.name.endswith(".meta.json")
         and path.suffix.lower() in SUPPORTED_EXTENSIONS
     )
 
@@ -46,6 +48,79 @@ def _discover_input_files(base_dir: Path) -> list[Path]:
 def _pretty_title(path: Path) -> str:
     """Generate a readable title from a filename."""
     return path.stem.replace("-", " ").replace("_", " ").strip().title()
+
+
+def _sidecar_metadata(source_path: Path) -> dict[str, str]:
+    sidecar_path = source_path.with_suffix(".meta.json")
+    if not sidecar_path.exists():
+        return {}
+
+    try:
+        payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+    metadata = {}
+    title = str(payload.get("official_title") or "").strip()
+    if title:
+        metadata["Official title"] = title
+    official_id = str(payload.get("official_id") or "").strip()
+    if official_id:
+        metadata["Official ID"] = official_id
+    issued_date = str(payload.get("issued_date") or "").strip()
+    if issued_date:
+        metadata["Issued date"] = issued_date
+    effective_date = str(payload.get("effective_date") or "").strip()
+    if effective_date:
+        metadata["Effective date"] = effective_date
+    official_url = str(payload.get("official_url") or "").strip()
+    if official_url:
+        metadata["Official URL"] = official_url
+    download_page = str(payload.get("download_page") or "").strip()
+    if download_page:
+        metadata["Download page"] = download_page
+    domain = str(payload.get("domain") or "").strip()
+    if domain:
+        metadata["Domain"] = domain
+    return metadata
+
+
+def _powershell_literal(path: Path) -> str:
+    return str(path.resolve()).replace("'", "''")
+
+
+def _convert_doc_to_docx(source_path: Path) -> Path:
+    converted_path = source_path.with_suffix(".docx")
+    if converted_path.exists() and converted_path.stat().st_mtime >= source_path.stat().st_mtime:
+        return converted_path
+
+    command = f"""
+$word = $null
+$document = $null
+try {{
+    $word = New-Object -ComObject Word.Application
+    $word.Visible = $false
+    $word.DisplayAlerts = 0
+    $document = $word.Documents.Open('{_powershell_literal(source_path)}', $false, $true)
+    $document.SaveAs([ref] '{_powershell_literal(converted_path)}', [ref] 16)
+}} finally {{
+    if ($document -ne $null) {{ $document.Close() }}
+    if ($word -ne $null) {{ $word.Quit() }}
+}}
+""".strip()
+    subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return converted_path
+
+
+def _prepared_source_path(source_path: Path) -> Path:
+    if source_path.suffix.lower() == ".doc":
+        return _convert_doc_to_docx(source_path)
+    return source_path
 
 
 def _json_to_html(payload: object, source_path: Path) -> tuple[str, str | None, dict[str, str]]:
@@ -118,7 +193,8 @@ def _convert_json_file(md: MarkItDown, source_path: Path) -> tuple[str, str | No
 
 def _convert_regular_file(md: MarkItDown, source_path: Path) -> tuple[str, str | None, dict[str, str]]:
     """Convert a non-JSON file directly with MarkItDown."""
-    result = md.convert(source_path)
+    prepared_path = _prepared_source_path(source_path)
+    result = md.convert(prepared_path)
     return result.text_content, None, {}
 
 
@@ -163,11 +239,19 @@ def convert_file(
 ) -> Path:
     """Convert one file and return the written Markdown path."""
     md = md or MarkItDown()
+    sidecar_fields = _sidecar_metadata(source_path)
 
     if source_path.suffix.lower() == ".json":
         markdown_body, title, extra_fields = _convert_json_file(md, source_path)
     else:
         markdown_body, title, extra_fields = _convert_regular_file(md, source_path)
+
+    if sidecar_fields:
+        if not title:
+            title = sidecar_fields.get("Official title")
+        merged_fields = dict(sidecar_fields)
+        merged_fields.update(extra_fields)
+        extra_fields = merged_fields
 
     output_path = _target_path_for(source_path, output_dir, landing_dir=landing_dir)
     output_path.parent.mkdir(parents=True, exist_ok=True)

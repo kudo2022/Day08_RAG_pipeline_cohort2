@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from .rag_utils import cosine_similarity, hash_embedding, tokenize
-from .task4_chunking_indexing import EMBEDDING_DIM, build_index
+from .rag_utils import cosine_similarity, hash_embedding, metadata_matches, searchable_text, tokenize
+from .task4_chunking_indexing import DEFAULT_DOMAIN, EMBEDDING_DIM, build_index
 
 
-def semantic_search(query: str, top_k: int = 10) -> list[dict]:
+def semantic_search(
+    query: str,
+    top_k: int = 10,
+    domain: str | None = DEFAULT_DOMAIN,
+    allowed_types: set[str] | None = None,
+) -> list[dict]:
     """Dense retrieval using the local hash embeddings from Task 4."""
     if top_k <= 0:
         return []
@@ -14,8 +19,10 @@ def semantic_search(query: str, top_k: int = 10) -> list[dict]:
     results: list[dict] = []
 
     for chunk in build_index():
+        if not metadata_matches(chunk, domain=domain, allowed_types=allowed_types):
+            continue
         semantic_score = cosine_similarity(query_embedding, chunk["embedding"])
-        chunk_tokens = set(tokenize(chunk["content"]))
+        chunk_tokens = set(tokenize(searchable_text(chunk)))
         overlap_score = len(query_tokens & chunk_tokens) / max(len(query_tokens), 1) if query_tokens else 0.0
         score = 0.8 * semantic_score + 0.2 * overlap_score
         if score <= 0:

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: procurement-law-agent
+    runtime: docker
+    plan: starter
+    region: singapore
+    autoDeployTrigger: commit
+    healthCheckPath: /
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
+      - key: LEGAL_AGENT_DOMAIN
+        value: procurement

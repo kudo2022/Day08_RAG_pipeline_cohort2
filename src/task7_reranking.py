@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .rag_utils import clamp, cosine_similarity, hash_embedding, minmax_normalize, normalize_text, tokenize, unique_item_key
+from .rag_utils import clamp, cosine_similarity, hash_embedding, minmax_normalize, normalize_text, searchable_text, tokenize, unique_item_key
 from .task4_chunking_indexing import EMBEDDING_DIM
 
 
@@ -31,10 +31,11 @@ def rerank_cross_encoder(query: str, candidates: list[dict], top_k: int = 5) -> 
         enriched["metadata"] = dict(candidate.get("metadata", {}))
         enriched["embedding"] = _ensure_embedding(candidate)
 
-        candidate_tokens = set(tokenize(candidate.get("content", "")))
+        candidate_text = searchable_text(candidate)
+        candidate_tokens = set(tokenize(candidate_text))
         overlap = len(query_tokens & candidate_tokens) / max(len(query_tokens), 1) if query_tokens else 0.0
         semantic = cosine_similarity(query_embedding, enriched["embedding"])
-        phrase_bonus = 0.1 if query_text and query_text in normalize_text(candidate.get("content", "")) else 0.0
+        phrase_bonus = 0.1 if query_text and query_text in normalize_text(candidate_text) else 0.0
         base_score = float(candidate.get("score", 0.0))
 
         enriched["score"] = clamp(0.45 * overlap + 0.35 * semantic + 0.20 * base_score + phrase_bonus)

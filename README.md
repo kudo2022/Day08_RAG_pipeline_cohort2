@@ -658,3 +658,42 @@ pytest tests/test_individual.py::TestTask5 -v
 - [Jina Reranker](https://jina.ai/reranker/) — Cross-encoder reranking API
 - Liu et al. (2023), *Lost in the Middle: How Language Models Use Long Contexts*
 # Day08_RAG_pipeline_cohort2
+## Procurement Agent Update
+
+This repo now includes a Gemini-backed procurement-law agent for Vietnam bidding law.
+
+Quick start:
+
+```bash
+pip install -r requirements.txt
+python scripts/bootstrap_procurement_agent.py
+python -m streamlit run app.py
+```
+
+The agent is configured to use `GEMINI_API_KEY` from `.env` and is seeded with official procurement-law documents and a procurement-specific retrieval domain.
+
+## Docker + Render Deploy
+
+This repo now includes:
+
+- `Dockerfile`
+- `start.sh`
+- `requirements.render.txt`
+- `render.yaml`
+
+Local Docker test:
+
+```bash
+docker build -t procurement-law-agent .
+docker run --rm -p 10000:10000 -e GEMINI_API_KEY=your_key procurement-law-agent
+```
+
+Deploy on Render:
+
+1. Push this repo to GitHub.
+2. In Render, create a new `Blueprint` or `Web Service`.
+3. If using Blueprint, Render will read `render.yaml` automatically.
+4. Set secret `GEMINI_API_KEY` in Render.
+5. Deploy.
+
+The container starts Streamlit on `0.0.0.0:$PORT`, which matches Render's web-service requirement.

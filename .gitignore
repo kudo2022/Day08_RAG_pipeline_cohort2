@@ -1,0 +1,6 @@
+.env
+data/index/
+.streamlit/
+__pycache__/
+*.pyc
+.pytest_cache/

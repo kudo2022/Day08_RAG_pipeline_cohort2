@@ -6,8 +6,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from .rag_utils import clamp, normalize_text, tokenize
-from .task4_chunking_indexing import INDEX_DIR, load_documents
+from .rag_utils import clamp, metadata_matches, normalize_text, tokenize
+from .task4_chunking_indexing import DEFAULT_DOMAIN, INDEX_DIR, load_documents
 
 load_dotenv()
 
@@ -48,7 +48,10 @@ def _split_sections(document: dict) -> list[dict]:
     return [section for section in sections if section["content"]]
 
 
-def upload_documents() -> list[dict]:
+def upload_documents(
+    domain: str | None = DEFAULT_DOMAIN,
+    allowed_types: set[str] | None = None,
+) -> list[dict]:
     """
     Build a small structural manifest that mimics PageIndex's document view.
 
@@ -58,19 +61,36 @@ def upload_documents() -> list[dict]:
     INDEX_DIR.mkdir(parents=True, exist_ok=True)
     manifest: list[dict] = []
     for document in load_documents():
+        if not metadata_matches(document, domain=domain, allowed_types=allowed_types):
+            continue
         manifest.extend(_split_sections(document))
 
     PAGEINDEX_CACHE_PATH.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return manifest
 
 
-def _load_manifest() -> list[dict]:
+def _load_manifest(
+    domain: str | None = DEFAULT_DOMAIN,
+    allowed_types: set[str] | None = None,
+) -> list[dict]:
     if PAGEINDEX_CACHE_PATH.exists():
-        return json.loads(PAGEINDEX_CACHE_PATH.read_text(encoding="utf-8"))
-    return upload_documents()
+        manifest = json.loads(PAGEINDEX_CACHE_PATH.read_text(encoding="utf-8"))
+        filtered = [
+            section
+            for section in manifest
+            if metadata_matches(section, domain=domain, allowed_types=allowed_types)
+        ]
+        if filtered:
+            return filtered
+    return upload_documents(domain=domain, allowed_types=allowed_types)
 
 
-def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
+def pageindex_search(
+    query: str,
+    top_k: int = 5,
+    domain: str | None = DEFAULT_DOMAIN,
+    allowed_types: set[str] | None = None,
+) -> list[dict]:
     """Offline structural retrieval used as the vectorless fallback."""
     if top_k <= 0:
         return []
@@ -81,7 +101,7 @@ def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
         return []
 
     results: list[dict] = []
-    for section in _load_manifest():
+    for section in _load_manifest(domain=domain, allowed_types=allowed_types):
         heading_tokens = set(tokenize(section["heading"]))
         content_tokens = set(tokenize(section["content"]))
         coverage = len(query_tokens & content_tokens) / len(query_tokens)

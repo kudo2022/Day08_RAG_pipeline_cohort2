@@ -3,11 +3,8 @@ from __future__ import annotations
 import math
 from collections import Counter
 
-from .rag_utils import tokenize
-from .task4_chunking_indexing import build_index
-
-CORPUS: list[dict] = []
-_BM25_INDEX: "SimpleBM25 | None" = None
+from .rag_utils import metadata_matches, searchable_text, tokenize
+from .task4_chunking_indexing import DEFAULT_DOMAIN, build_index
 
 
 class SimpleBM25:
@@ -53,29 +50,34 @@ class SimpleBM25:
 
 
 def build_bm25_index(corpus: list[dict]) -> SimpleBM25:
-    tokenized_corpus = [tokenize(doc["content"]) for doc in corpus]
+    tokenized_corpus = [tokenize(searchable_text(doc)) for doc in corpus]
     return SimpleBM25(tokenized_corpus)
 
 
-def _ensure_bm25() -> tuple[list[dict], SimpleBM25]:
-    global CORPUS, _BM25_INDEX
-    if CORPUS and _BM25_INDEX is not None:
-        return CORPUS, _BM25_INDEX
-
-    CORPUS = [
+def _ensure_bm25(
+    domain: str | None,
+    allowed_types: set[str] | None,
+) -> tuple[list[dict], SimpleBM25]:
+    corpus = [
         {"content": chunk["content"], "metadata": dict(chunk["metadata"]), "embedding": list(chunk["embedding"])}
         for chunk in build_index()
+        if metadata_matches(chunk, domain=domain, allowed_types=allowed_types)
     ]
-    _BM25_INDEX = build_bm25_index(CORPUS)
-    return CORPUS, _BM25_INDEX
+    bm25 = build_bm25_index(corpus)
+    return corpus, bm25
 
 
-def lexical_search(query: str, top_k: int = 10) -> list[dict]:
+def lexical_search(
+    query: str,
+    top_k: int = 10,
+    domain: str | None = DEFAULT_DOMAIN,
+    allowed_types: set[str] | None = None,
+) -> list[dict]:
     """Sparse retrieval using a small local BM25 implementation."""
     if top_k <= 0:
         return []
 
-    corpus, bm25 = _ensure_bm25()
+    corpus, bm25 = _ensure_bm25(domain=domain, allowed_types=allowed_types)
     query_tokens = tokenize(query)
     scores = bm25.get_scores(query_tokens)
 

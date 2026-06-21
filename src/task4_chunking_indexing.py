@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
-from .rag_utils import extract_year, first_heading, hash_embedding
+from .rag_utils import extract_markdown_field, extract_year, first_heading, hash_embedding, normalize_text, searchable_text
 
 STANDARDIZED_DIR = Path(__file__).resolve().parent.parent / "data" / "standardized"
 INDEX_DIR = Path(__file__).resolve().parent.parent / "data" / "index"
@@ -23,8 +24,38 @@ EMBEDDING_DIM = 384
 
 # Lightweight local JSON cache used as the vector store for this repository.
 VECTOR_STORE = "local_json"
+DEFAULT_DOMAIN = os.getenv("LEGAL_AGENT_DOMAIN", "procurement").strip().lower() or "procurement"
 
 _INDEX_CACHE: list[dict] | None = None
+
+
+def infer_domain(relative_path: str, content: str) -> str:
+    sample = normalize_text(f"{relative_path}\n{content[:4000]}")
+
+    procurement_keywords = (
+        "dau thau",
+        "nha thau",
+        "nha dau tu",
+        "goi thau",
+        "ho so moi thau",
+        "chi dinh thau",
+    )
+    if any(keyword in sample for keyword in procurement_keywords):
+        return "procurement"
+
+    narcotics_keywords = (
+        "ma tuy",
+        "chat cam",
+        "cai nghien",
+        "bo luat hinh su",
+    )
+    if any(keyword in sample for keyword in narcotics_keywords):
+        return "drug_law"
+
+    if "news/" in relative_path or "/news/" in relative_path:
+        return "news"
+
+    return "general"
 
 
 def load_documents() -> list[dict]:
@@ -41,8 +72,9 @@ def load_documents() -> list[dict]:
         if not content:
             continue
 
-        title = first_heading(content) or md_file.stem.replace("-", " ").title()
+        title = extract_markdown_field(content, "Official title") or first_heading(content) or md_file.stem.replace("-", " ").title()
         relative_path = md_file.relative_to(STANDARDIZED_DIR).as_posix()
+        domain = infer_domain(relative_path, content)
         documents.append(
             {
                 "content": content,
@@ -51,6 +83,12 @@ def load_documents() -> list[dict]:
                     "path": relative_path,
                     "type": md_file.parent.name,
                     "title": title,
+                    "official_id": extract_markdown_field(content, "Official ID"),
+                    "source_url": extract_markdown_field(content, "Official URL") or extract_markdown_field(content, "Source URL"),
+                    "issued_date": extract_markdown_field(content, "Issued date"),
+                    "effective_date": extract_markdown_field(content, "Effective date"),
+                    "domain": domain,
+                    "jurisdiction": "vietnam",
                     "year": extract_year(content, md_file.stem),
                 },
             }
@@ -118,7 +156,7 @@ def embed_chunks(chunks: list[dict]) -> list[dict]:
         enriched = {
             "content": chunk["content"],
             "metadata": dict(chunk["metadata"]),
-            "embedding": hash_embedding(chunk["content"], EMBEDDING_DIM),
+            "embedding": hash_embedding(searchable_text(chunk), EMBEDDING_DIM),
         }
         embedded.append(enriched)
     return embedded
@@ -142,6 +180,18 @@ def build_index(force_rebuild: bool = False) -> list[dict]:
                 "embedding": list(chunk["embedding"]),
             }
             for chunk in _INDEX_CACHE
+        ]
+
+    if VECTORSTORE_PATH.exists() and not force_rebuild:
+        persisted_chunks = json.loads(VECTORSTORE_PATH.read_text(encoding="utf-8"))
+        _INDEX_CACHE = persisted_chunks
+        return [
+            {
+                "content": chunk["content"],
+                "metadata": dict(chunk["metadata"]),
+                "embedding": list(chunk["embedding"]),
+            }
+            for chunk in persisted_chunks
         ]
 
     documents = load_documents()
