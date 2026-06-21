@@ -697,3 +697,7 @@ Deploy on Render:
 5. Deploy.
 
 The container starts Streamlit on `0.0.0.0:$PORT`, which matches Render's web-service requirement.
+
+Direct one-click deploy for the current working branch:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/kudo2022/Day08_RAG_pipeline_cohort2/tree/codex%2Fimplement-readme-rag-tasks)
