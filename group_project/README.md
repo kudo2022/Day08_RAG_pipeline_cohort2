@@ -194,9 +194,8 @@ run_dashboard()
 pip install -r requirements.txt
 
 # Chạy app
-streamlit run app.py
-# hoặc
-chainlit run app.py
+python app.py
+# Production trong Docker/Railway dùng start.sh + Gunicorn
 ```
 
 ---

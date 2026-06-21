@@ -541,9 +541,8 @@ run_dashboard()
 pip install -r requirements.txt
 
 # Chạy app
-streamlit run app.py
-# hoặc
-chainlit run app.py
+python app.py
+# Production trong Docker/Railway dùng start.sh + Gunicorn
 ```
 
 ---
@@ -667,18 +666,21 @@ Quick start:
 ```bash
 pip install -r requirements.txt
 python scripts/bootstrap_procurement_agent.py
-python -m streamlit run app.py
+python app.py
 ```
 
 The agent is configured to use `GEMINI_API_KEY` from `.env` and is seeded with official procurement-law documents and a procurement-specific retrieval domain.
 
-## Docker + Render Deploy
+The UI now runs on Flask + HTML/CSS/JS, which avoids the Streamlit frontend chunk-loading issue and is more stable on Railway.
+
+## Docker + Railway Deploy
 
 This repo now includes:
 
 - `Dockerfile`
 - `start.sh`
 - `requirements.render.txt`
+- `railway.toml`
 - `render.yaml`
 
 Local Docker test:
@@ -688,15 +690,18 @@ docker build -t procurement-law-agent .
 docker run --rm -p 10000:10000 -e GEMINI_API_KEY=your_key procurement-law-agent
 ```
 
-Deploy on Render:
+Deploy on Railway:
 
 1. Push this repo to GitHub.
-2. In Render, create a new `Blueprint` or `Web Service`.
-3. If using Blueprint, Render will read `render.yaml` automatically.
-4. Set secret `GEMINI_API_KEY` in Render.
-5. Deploy.
+2. In Railway, choose `New Project` -> `Deploy from GitHub repo`.
+3. Select the branch `codex/implement-readme-rag-tasks`.
+4. Railway will detect the root `Dockerfile` and apply `railway.toml`.
+5. Set secret `GEMINI_API_KEY` and optionally `GEMINI_MODEL`.
+6. After deploy, open `Settings` -> `Networking` -> `Generate Domain`.
 
-The container starts Streamlit on `0.0.0.0:$PORT`, which matches Render's web-service requirement.
+The container serves Flask through Gunicorn on `0.0.0.0:$PORT`, which matches Railway's web-service requirement.
+
+Render artifacts remain in the repo if you still want to deploy there later.
 
 Direct one-click deploy for the current working branch:
 

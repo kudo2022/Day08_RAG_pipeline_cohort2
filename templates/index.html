@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Procurement Law Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script id="bootstrap-data" type="application/json">{{ bootstrap | tojson }}</script>
+    <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <aside class="sidebar-panel">
+        <div class="brand-card panel-card">
+          <p class="eyebrow">Vietnam Procurement RAG</p>
+          <h1>ProcurementLawAgent</h1>
+          <p class="lede">
+            AI agent hoi dap Luat Dau thau, uu tien trich dan inline, ngay hieu luc,
+            va van ban can doi chieu.
+          </p>
+          <div class="status-line">
+            <span class="badge {% if bootstrap.geminiEnabled %}badge-success{% else %}badge-muted{% endif %}">
+              {% if bootstrap.geminiEnabled %}Gemini da cau hinh{% else %}Dang chay local fallback{% endif %}
+            </span>
+            <span class="badge badge-outline">{{ bootstrap.modelLabel }}</span>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <section class="stat-card panel-card">
+            <span class="stat-value">{{ bootstrap.status.documents }}</span>
+            <span class="stat-label">Van ban goc</span>
+          </section>
+          <section class="stat-card panel-card">
+            <span class="stat-value">{{ bootstrap.status.converted }}</span>
+            <span class="stat-label">Markdown</span>
+          </section>
+          <section class="stat-card panel-card">
+            <span class="stat-value">{{ bootstrap.status.chunks }}</span>
+            <span class="stat-label">Indexed chunks</span>
+          </section>
+        </div>
+
+        <div class="panel-card">
+          <h2>Pham vi doi chieu</h2>
+          <p>{{ bootstrap.scopeText }}</p>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-header">
+            <h2>Goi y hoi nhanh</h2>
+            <span class="panel-caption">1 cham de nap vao khung hoi</span>
+          </div>
+          <div id="suggestionList" class="chip-list"></div>
+        </div>
+
+        <div class="panel-card tone-card">
+          <h2>Cach agent tra loi</h2>
+          <ul class="policy-list">
+            <li>Tra loi bang tieng Viet, ngan gon va co the doi chieu.</li>
+            <li>Neu thieu can cu, he thong se noi ro khong the xac minh.</li>
+            <li>Uu tien neu ngay hieu luc, so van ban, va pham vi ap dung.</li>
+          </ul>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <section class="hero panel-card">
+          <div class="hero-copy">
+            <p class="eyebrow">Legal Q&A Workspace</p>
+            <h2>Hoi dap Luat Dau thau voi giao dien on dinh hon de deploy</h2>
+            <p>
+              Giao dien nay khong phu thuoc vao Streamlit frontend chunks, phu hop hon
+              cho Railway va de mo rong thanh portal hoi dap noi bo.
+            </p>
+          </div>
+          <div class="hero-note">
+            <span class="hero-note-label">Cach dat cau hoi tot</span>
+            <p>Neu ro boi canh, moc thoi gian, va loai chu the can ap dung quy dinh.</p>
+          </div>
+        </section>
+
+        {% if bootstrap.status.error %}
+        <section class="alert-card panel-card alert-danger">
+          <h3>Knowledge base chua san sang</h3>
+          <p>{{ bootstrap.status.error }}</p>
+        </section>
+        {% endif %}
+
+        <section class="chat-shell panel-card">
+          <div class="chat-toolbar">
+            <div>
+              <h3>Khung hoi dap</h3>
+              <p>Lich su hoi dap duoc giu cho tung phien lam viec.</p>
+            </div>
+            <button id="resetButton" type="button" class="ghost-button">Xoa hoi thoai</button>
+          </div>
+
+          <div id="messageList" class="message-list"></div>
+
+          <div id="emptyState" class="empty-state">
+            <div class="empty-icon">§</div>
+            <h3>Bat dau tu mot cau hoi thuc te</h3>
+            <p>
+              Vi du: "Goi thau nao co the chi dinh thau?" hoac
+              "Nghi dinh nao dang sua doi huong dan lua chon nha thau?"
+            </p>
+            <div id="emptySuggestionList" class="chip-list"></div>
+          </div>
+
+          <form id="chatForm" class="chat-form">
+            <label class="input-label" for="promptInput">Cau hoi cua ban</label>
+            <textarea
+              id="promptInput"
+              name="message"
+              rows="4"
+              placeholder="Nhap cau hoi ve Luat Dau thau, nghi dinh huong dan, ngay hieu luc, truong hop ap dung..."
+              {% if not bootstrap.status.ready %}disabled{% endif %}
+            ></textarea>
+            <div class="form-actions">
+              <p class="form-help">Nhan Ctrl + Enter de gui nhanh.</p>
+              <button id="submitButton" type="submit" class="primary-button" {% if not bootstrap.status.ready %}disabled{% endif %}>
+                Gui cau hoi
+              </button>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
